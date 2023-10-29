@@ -1,51 +1,117 @@
-![alt text](https://github.com/Roadeo/qbittorrent-peers-location-grafana/blob/main/worldmap.PNG)
+![World Map](/assets/worldmap.png)
 
-<h2>A python script (along with instructions) to display the locations of all the peers your qBittorrent client is connected to in a Grafana worldmap dashboard.</h2>
+# qbit-peers
 
-Disclaimer : The steps I took to get this working might not be the most efficient. But this is all I could create with what I know at the moment. Feel free to (actually this is a request) to make changes and improve this. Thanks!
+Forked from: https://github.com/Roadeo/qbittorrent-peers-location-grafana
 
-<h3>Pre-requisites</h3>
+A python script (along with instructions) to display the locations of all the peers your qBittorrent client is connected to in a Grafana worldmap dashboard.
 
-* python
-	* pygeohash module (to convert latitude and longitude to geohash)
-	* mariadb module (a quick google search for 'python mariadb' should tell you all you need to know about using this module)
+## Pre-requisites
 
-* MariaDB (this should work with other similar databases but I haven't tried any of them yet)
+The following instructions are assuming:
 
-* qBittorrent
+- Docker is already running and configured
+- Grafana is already running and configured
 
-* Grafana
+## Instructions
 
-<h3>Steps</h3>
+### Clone the repository
 
-* First step is to create the database which will contain the information about the IP addresses and their corresponding locations. I used this "https://lite.ip2location.com/database/db5-ip-country-region-city-latitude-longitude" since it is free and it had the latitude and longitude information which is enough precision to pipoint a peer on the map. Download the IPV4 CSV file from this link and follow the instructions given below in the same page to create a database and import the location data to a table.
+```
+git clone https://github.com/kaizensh/qbit-peers && cd qbit-peers
+```
 
-![alt text](https://github.com/Roadeo/qbittorrent-peers-location-grafana/blob/main/ip2locationdb.PNG)
+### Download the IP2Location database
 
-![alt text](https://github.com/Roadeo/qbittorrent-peers-location-grafana/blob/main/peer_list.PNG)
+- Create a data directory in the cloned repository
+- Download the IP2Location LITE database from https://lite.ip2location.com/database/ip-country-region-city-latitude-longitude
+- Extract the CSV file from the ZIP file and place it in the data directory
 
-* Next, create a new table which I'll call peer_list to store the IP addresses along with their geohashes of all the peers which are connected at a given point in time. To create this table, which is in the same database as the ip2location table, I used:
+### Configure the docker compose file
 
-CREATE TABLE peer_list (time int(11), ip_address varchar(15), geohash varchar(20));
+`docker-compose.yml`
 
-Remember to grant the neccessary permissions on both the tables to your MariaDB user.	
+- Change /opt/qbit-peers to your desired location
+- Change the password for the MariaDB root user
 
-* Now download the python script in this repository and fill in your credentials.
-	* qBittorrent web API credentials
-	* MariaDB credentials
+### Configure the python script
 
-Once you're done with this step, run the script once. If all goes well, you should be able to see the peer_list table populated with IP addresses and geohashes.
+`qbit-peers.py`
 
-If you haven't already done so, install the Grafana world map plugin. You can find it here "https://grafana.com/grafana/plugins/grafana-worldmap-panel/".
+- Configure the qbittorrent server ip, port, username and password
+- Configure the MariaDB host, port, user, password and database name
 
-![alt text](https://github.com/Roadeo/qbittorrent-peers-location-grafana/blob/main/query.PNG)
+### Run the docker compose file
 
-![alt text](https://github.com/Roadeo/qbittorrent-peers-location-grafana/blob/main/worldmap_settings_1.PNG)
+`docker-compose up -d`
 
-![alt text](https://github.com/Roadeo/qbittorrent-peers-location-grafana/blob/main/worldmap_settings_2.PNG)
+### Stop the qbit-peers container to avoid any potential issues before importing the IP2Location database
 
-* Once that's done, create a new panel in Grafana and change visualization option to worldmap panel. Change the database source to your MariaDB database. Choose the table name as peer_list, and the metric column as geohash. In the next row, change the Column:value to Column:geohash by right clicking it and typing in geohash. Then, at the end of the query options, change the format as option to table. Then we'll change the worldmap panel options in the right side. Change the values for min and max circle size to 1 since we're displaying each peer as a single dot and not as a bigger circle. Change location data to geohash. Finally, under field mapping, enter geohash in the geo_point/geohash field box.
+`docker stop qbit-peers`
 
-And, if everything went correctly (or exactly like I did lol), you should start seeing a few dots appear on the map. You can change the color of the dots by changing the color for the thresholds in previous step.
+## Import the IP2Location database
 
-* Now, all that's left is to add a cron entry to execute the script at regular intervals and we're done. :)
+`IP2LOCATION-LITE-DB5.CSV`
+
+### Enter the MariaDB container
+
+```sh
+docker exec -it qbit-peers-mariadb mariadb -uroot -p<password>
+```
+
+```sql
+USE ip2location;
+```
+
+```sql
+LOAD DATA LOCAL INFILE '/tmp/IP2LOCATION-LITE-DB5.CSV'
+INTO TABLE ip2location_db5
+FIELDS TERMINATED BY ',' ENCLOSED BY '"'
+LINES TERMINATED BY '\n';
+```
+
+```sql
+EXIT;
+```
+
+### Start the qbit-peers container
+
+```sh
+docker start qbit-peers
+```
+
+## Configure Grafana
+
+### Add the MariaDB datasource
+
+In Grafana, go to Connections > Data Sources > Add new source > MySQL
+
+- Name: `qbit-peers-mariadb`
+- Host: `qbit-peers-mariadb`
+- Database: `ip2location`
+- User: `root`
+- Password: `<password>`
+
+Save & Test
+
+### Add the Worldmap Panel
+
+Install the Worldmap Panel plugin:
+https://grafana.com/grafana/plugins/grafana-worldmap-panel/
+
+### Create a new Dashboard
+
+- Add a new Panel
+- Change Visualization to Worldmap Panel
+- Change the Datasource to qbit-peers-mariadb
+- Change the Format to Table
+- Change the Dataset to ip2location
+- Change the Table to peer_list
+- Change the Column value to geohash
+
+### Configure the Worldmap Panel
+
+- Change the Min circle size to 1 (or your desired size)
+- Change the Max circle size to 1 (or your desired size)
+- Change the Location data to geohash
+- Change the Field mapping to geohash
