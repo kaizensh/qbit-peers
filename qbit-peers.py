@@ -23,8 +23,14 @@ CONFIG = {
 def ip2long(ip):
     """Convert IP address to a decimal number."""
     try:
-        packedIP = socket.inet_aton(ip)
-        return struct.unpack("!L", packedIP)[0]
+        # Check if it's an IPv4 address
+        if "." in ip:
+            packedIP = socket.inet_aton(ip)
+            return struct.unpack("!L", packedIP)[0]
+        # Check if it's an IPv6 address
+        elif ":" in ip:
+            packedIP = socket.inet_pton(socket.AF_INET6, ip)
+            return int.from_bytes(packedIP, byteorder='big')
     except OSError:
         print(f"Invalid IP address: {ip}")
         return None
