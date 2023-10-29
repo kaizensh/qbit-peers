@@ -5,6 +5,24 @@ import struct
 import mariadb
 import time
 import pygeohash
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Define parameters for log rotation
+LOG_FILE = '/app/logs/script.log'
+MAX_LOG_SIZE = 5 * 1024 * 1024  # 5 MB
+BACKUP_COUNT = 3  # Keep three backup copies
+
+# Set up the logger
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+# Set up the rotating file handler
+handler = RotatingFileHandler(LOG_FILE, maxBytes=MAX_LOG_SIZE, backupCount=BACKUP_COUNT)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+
+logger.addHandler(handler)
 
 # Configuration --- change me!
 CONFIG = {
@@ -41,6 +59,7 @@ def main():
 
     with requests.Session() as s:
         # Login to qbittorrent
+        logging.info("Logging in to qbittorrent.")
         s.post(f"{server_address}/api/v2/auth/login",
                data={"username": CONFIG['qbusername'], "password": CONFIG['qbpassword']})
 
@@ -48,11 +67,13 @@ def main():
         response = s.get(f"{server_address}/api/v2/torrents/info")
         if response.status_code == 200:
             torrents = response.json()
+            logging.info(f"Retrieved {len(torrents)} torrents.")
         else:
-            print(f"Error: Received status code {response.status_code}")
-            print(response.text)
+            logging.error(f"Error: Received status code {response.status_code}")
+            logging.error(response.text)
 
         # Connect to MariaDB
+        logging.info("Connecting to MariaDB.")
         with mariadb.connect(
             host=CONFIG['db_host'],
             port=CONFIG['db_port'],
@@ -94,9 +115,11 @@ def main():
 
                 # Batch insert data
                 if data_to_insert:
+                    logging.info(f"Inserting {len(data_to_insert)} records into the database.")
                     mycursor.executemany(insert_query, data_to_insert)
                 
         # Logout from qbittorrent
+        logging.info("Logging out from qbittorrent.")
         s.get(f"{server_address}/api/v2/auth/logout")
 
 
